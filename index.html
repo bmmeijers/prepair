@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>prepair by tudelft-gist</title>
+    
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>prepair</h1>
+        <p>Automatic repair of single polygons</p>
+        <p class="view"><a href="https://github.com/tudelft-gist/prepair">View the Project on GitHub <small>tudelft-gist/prepair</small></a></p>
+        <ul>
+          <li><a href="https://github.com/tudelft-gist/prepair/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/tudelft-gist/prepair/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/tudelft-gist/prepair">Fork On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <p><img src="http://homepage.tudelft.nl/23t4p/t/prepairlogo.png" alt=""></p>
+
+<h2>What is prepair?</h2>
+
+<p>prepair permits you to easily repair "broken" GIS polygons, and that according to the international standards ISO 19107. In brief, given a polygon stored in <a href="http://en.wikipedia.org/wiki/Well-known_text">WKT</a>, it <em>automatically</em> repairs it and gives you back a valid WKT. Automated repair methods can be considered as interpreting ambiguous or ill-defined polygons and giving a coherent and clearly defined output.</p>
+
+<p>It performs more or less the same as the new PostGIS 2.0's function <a href="http://postgis.org/documentation/manual-svn/ST_MakeValid.html">ST_MakeValid()</a>, but is several order of magnitude faster, scales better to massive polygons, and predicting its behaviour is simple (so one can guess how her polygons will be repaired).</p>
+
+<p>prepair is based on a constrained triangulation, and <a href="http://www.cgal.org">CGAL</a> and <a href="http://www.gdal.org/ogr/">OGR</a> are used.</p>
+
+<h2>All the details (or almost)</h2>
+
+<p>Details of how we automatically repair broken polygons, and what results you can expect, are available our <a href="http://www.gdmc.nl/ledoux/pdfs/_12agile.pdf">Agile 2012 paper</a>.</p>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/tudelft-gist">tudelft-gist</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
