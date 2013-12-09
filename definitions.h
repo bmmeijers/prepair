@@ -70,7 +70,11 @@ typedef CGAL::Triangulation_face_base_with_info_2<TriangleInfo, K, FB> FBWI;
 typedef CGAL::Triangulation_data_structure_2<VB, FBWI> TDS;
 typedef CGAL::Exact_predicates_tag PT;
 typedef CGAL::Exact_intersections_tag IT;
+#ifdef EXACT_CONSTRUCTIONS
+typedef CGAL::Constrained_Delaunay_triangulation_2<K, TDS, IT> CDT;
+#else
 typedef CGAL::Constrained_Delaunay_triangulation_2<K, TDS, PT> CDT;
+#endif
 typedef CGAL::Triangulation_hierarchy_2<CDT> CDTH;
 typedef CGAL::Constrained_triangulation_plus_2<CDTH> Triangulation;
 typedef CGAL::Snap_rounding_traits_2<K> SRT;
