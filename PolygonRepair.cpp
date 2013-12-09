@@ -21,6 +21,38 @@
 
 #include "PolygonRepair.h"
 
+/*
+ What is checked:
+ - repeated points
+ - rings touching at an edge
+ 
+ What is not checked:
+ - first = last, in some formats this is implicit
+ 
+ */
+bool PolygonRepair::isValid(OGRGeometry *geometry, bool timeResults) {
+  bool errorsDetected = false;
+  
+  time_t thisTime, totalTime;
+  thisTime = time(NULL);
+  switch (geometry->getGeometryType()) {
+    
+    case wkbLineString: {
+      errorsDetected |= insertConstraints(triangulation, geometry);
+      totalTime = time(NULL)-thisTime;
+      if (timeResults) std::cout << "Triangulation: " << totalTime/60 << " minutes " << totalTime%60 << " seconds." << std::endl;
+      break;
+    }
+      
+    default:
+      std::cerr << "PolygonRepair::isValid: Cannot understand input." << std::endl;
+      return new OGRMultiPolygon();
+      break;
+  }
+  
+  return !errorsDetected;
+}
+
 OGRMultiPolygon *PolygonRepair::repairOddEven(OGRGeometry *geometry, bool timeResults) {
   triangulation.clear();
   time_t thisTime, totalTime;
@@ -308,43 +340,44 @@ bool PolygonRepair::saveToShp(OGRGeometry* geometry, const char *fileName) {
   OGRRegisterAll();
 	OGRSFDriver *driver = OGRSFDriverRegistrar::GetRegistrar()->GetDriverByName(driverName);
 	if (driver == NULL) {
-		std::cout << "\tError: OGR Shapefile driver not found." << std::endl;
+		std::cerr << "\tError: OGR Shapefile driver not found." << std::endl;
 		return false;
 	}
 	OGRDataSource *dataSource = driver->Open(fileName, false);
 	if (dataSource != NULL) {
 		std::cout << "\tOverwriting file..." << std::endl;
 		if (driver->DeleteDataSource(dataSource->GetName())!= OGRERR_NONE) {
-			std::cout << "\tError: Couldn't erase file with same name." << std::endl;
+			std::cerr << "\tError: Couldn't erase file with same name." << std::endl;
 			return false;
 		} OGRDataSource::DestroyDataSource(dataSource);
 	}
 	std::cout << "\tCreating " << fileName << std::endl;
 	dataSource = driver->CreateDataSource(fileName, NULL);
 	if (dataSource == NULL) {
-		std::cout << "\tError: Could not create file." << std::endl;
+		std::cerr << "\tError: Could not create file." << std::endl;
 		return false;
 	}
 	OGRLayer *layer = dataSource->CreateLayer("polygons", NULL, wkbPolygon, NULL);
 	if (layer == NULL) {
-		std::cout << "\tError: Could not create layer." << std::endl;
+		std::cerr << "\tError: Could not create layer." << std::endl;
 		return false;
 	}
   OGRFeature *feature = OGRFeature::CreateFeature(layer->GetLayerDefn());
   // feature->SetField("Name", szName);
   feature->SetGeometry(geometry);
   if (layer->CreateFeature(feature) != OGRERR_NONE) {
-    std::cout << "\tError: Could not create feature." << std::endl;
+    std::cerr << "\tWarning: Could not create feature." << std::endl;
   }
   OGRFeature::DestroyFeature(feature);
   OGRDataSource::DestroyDataSource(dataSource);
   return true;
 }
 
-void PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry* geometry, bool removeOverlappingConstraints) {
-  Triangulation::Vertex_handle va, vb;
+bool PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry* geometry, bool removeOverlappingConstraints) {
+  Triangulation::Vertex_handle va, vb = triangulation.infinite_vertex();
   Triangulation::Face_handle faceOfEdge;
   int indexOfEdge;
+  bool errorDetected = false;
   
   switch (geometry->getGeometryType()) {
       
@@ -358,10 +391,18 @@ void PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry*
         vb = triangulation.insert(Point(ring->getX(currentPoint),
                                         ring->getY(currentPoint)),
                                   triangulation.incident_faces(va));
-        if (removeOverlappingConstraints && triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
+        if (va == vb) {
+          errorDetected = true;
+          std::cout << "\tPoint " << currentPoint << ": Repeated point" << std::endl;
+          continue;
+        } if (triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
           if (triangulation.is_constrained(std::pair<Triangulation::Face_handle, int>(faceOfEdge, indexOfEdge))) {
-            triangulation.insert_constraint(va, vb); // trick to remove a partially overlapping constraint
-            triangulation.remove_constraint(va, vb);
+            errorDetected = true;
+            std::cout << "\tPoint " << currentPoint << ": Rings touching at an edge" << std::endl;
+            if (removeOverlappingConstraints) {
+              triangulation.insert_constraint(va, vb); // trick to remove a partially overlapping constraint
+              triangulation.remove_constraint(va, vb);
+            }
           } else triangulation.insert_constraint(va, vb);
         } else triangulation.insert_constraint(va, vb);
       } break;
@@ -371,17 +412,26 @@ void PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry*
       OGRPolygon *polygon = static_cast<OGRPolygon *>(geometry);
       
       // Outer
-      vb = triangulation.insert(Point(polygon->getExteriorRing()->getX(0), polygon->getExteriorRing()->getY(0)));
+      vb = triangulation.insert(Point(polygon->getExteriorRing()->getX(0),
+                                      polygon->getExteriorRing()->getY(0)));
       for (int currentPoint = 1; currentPoint < polygon->getExteriorRing()->getNumPoints(); ++currentPoint) {
         va = vb;
         vb = triangulation.insert(Point(polygon->getExteriorRing()->getX(currentPoint),
                                         polygon->getExteriorRing()->getY(currentPoint)),
                                   triangulation.incident_faces(va));
-        if (removeOverlappingConstraints && triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
+        if (va == vb) {
+          errorDetected = true;
+          std::cout << "\tOuter ring point " << currentPoint << ": Repeated point" << std::endl;
+          continue;
+        } if (triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
           if (triangulation.is_constrained(std::pair<Triangulation::Face_handle, int>(faceOfEdge, indexOfEdge))) {
-            triangulation.insert_constraint(va, vb);
-            triangulation.remove_constraint(va, vb);
-            //std::cout << "Removing constraint <" << va->point() << ", " << vb->point() << ">" << std::endl;
+            errorDetected = true;
+            std::cout << "\tOuter ring point " << currentPoint << ": Rings touching at an edge" << std::endl;
+            if (removeOverlappingConstraints) {
+              triangulation.insert_constraint(va, vb);
+              triangulation.remove_constraint(va, vb);
+              //std::cout << "Removing constraint <" << va->point() << ", " << vb->point() << ">" << std::endl;
+            }
           } else {
             triangulation.insert_constraint(va, vb);
             //std::cout << "Inserting constraint <" << va->point() << ", " << vb->point() << ">" << std::endl;
@@ -395,17 +445,26 @@ void PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry*
       // Inner
       for (int currentRing = 0; currentRing < polygon->getNumInteriorRings(); ++currentRing) {
         vb = triangulation.insert(Point(polygon->getInteriorRing(currentRing)->getX(0),
-                                        polygon->getInteriorRing(currentRing)->getY(0)));
+                                        polygon->getInteriorRing(currentRing)->getY(0)),
+                                  triangulation.incident_faces(vb));
         for (int currentPoint = 1; currentPoint < polygon->getInteriorRing(currentRing)->getNumPoints(); ++currentPoint) {
           va = vb;
           vb = triangulation.insert(Point(polygon->getInteriorRing(currentRing)->getX(currentPoint),
                                           polygon->getInteriorRing(currentRing)->getY(currentPoint)),
                                     triangulation.incident_faces(va));
-          if (removeOverlappingConstraints && triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
+          if (va == vb) {
+            errorDetected = true;
+            std::cout << "\tInner ring " << currentRing << " point " << currentPoint << ": Repeated point" << std::endl;
+            continue;
+          } if (triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
             if (triangulation.is_constrained(std::pair<Triangulation::Face_handle, int>(faceOfEdge, indexOfEdge))) {
-              triangulation.insert_constraint(va, vb);
-              triangulation.remove_constraint(va, vb);
-              //std::cout << "Removing constraint <" << va->point() << ", " << vb->point() << ">" << std::endl;
+              errorDetected = true;
+              std::cout << "\tInner ring " << currentRing << " point " << currentPoint << ": Rings touching at an edge" << std::endl;
+              if (removeOverlappingConstraints) {
+                triangulation.insert_constraint(va, vb);
+                triangulation.remove_constraint(va, vb);
+                //std::cout << "Removing constraint <" << va->point() << ", " << vb->point() << ">" << std::endl;
+              }
             } else {
               triangulation.insert_constraint(va, vb);
               //std::cout << "Inserting constraint <" << va->point() << ", " << vb->point() << ">" << std::endl;
@@ -426,16 +485,25 @@ void PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry*
         
         // Outer
         vb = triangulation.insert(Point(polygon->getExteriorRing()->getX(0),
-                                        polygon->getExteriorRing()->getY(0)));
+                                        polygon->getExteriorRing()->getY(0)),
+                                  triangulation.incident_faces(vb));
         for (int currentPoint = 1; currentPoint < polygon->getExteriorRing()->getNumPoints(); ++currentPoint) {
           va = vb;
           vb = triangulation.insert(Point(polygon->getExteriorRing()->getX(currentPoint),
                                           polygon->getExteriorRing()->getY(currentPoint)),
                                     triangulation.incident_faces(va));
-          if (removeOverlappingConstraints && triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
+          if (va == vb) {
+            errorDetected = true;
+            std::cout << "\tPolygon " << currentPolygon << " outer ring point " << currentPoint << ": Repeated point" << std::endl;
+            continue;
+          } if (triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
             if (triangulation.is_constrained(std::pair<Triangulation::Face_handle, int>(faceOfEdge, indexOfEdge))) {
-              triangulation.insert_constraint(va, vb);
-              triangulation.remove_constraint(va, vb);
+              errorDetected = true;
+              std::cout << "\tPolygon " << currentPolygon << " outer ring point " << currentPoint << ": Rings touching at an edge" << std::endl;
+              if (removeOverlappingConstraints) {
+                triangulation.insert_constraint(va, vb);
+                triangulation.remove_constraint(va, vb);
+              }
             } else triangulation.insert_constraint(va, vb);
           } else triangulation.insert_constraint(va, vb);
         }
@@ -449,10 +517,18 @@ void PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry*
             vb = triangulation.insert(Point(polygon->getInteriorRing(currentRing)->getX(currentPoint),
                                             polygon->getInteriorRing(currentRing)->getY(currentPoint)),
                                       triangulation.incident_faces(va));
-            if (removeOverlappingConstraints && triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
+            if (va == vb) {
+              errorDetected = true;
+              std::cout << "\tPolygon " << currentPolygon << " inner ring " << currentRing << " point " << currentPoint << ": Repeated point" << std::endl;
+              continue;
+            } if (triangulation.is_edge(va, vb, faceOfEdge, indexOfEdge)) {
               if (triangulation.is_constrained(std::pair<Triangulation::Face_handle, int>(faceOfEdge, indexOfEdge))) {
-                triangulation.insert_constraint(va, vb);
-                triangulation.remove_constraint(va, vb);
+                errorDetected = true;
+                std::cout << "\tPolygon " << currentPolygon << " inner ring " << currentRing << " point " << currentPoint << ": Rings touching at an edge" << std::endl;
+                if (removeOverlappingConstraints) {
+                  triangulation.insert_constraint(va, vb);
+                  triangulation.remove_constraint(va, vb);
+                }
               } else triangulation.insert_constraint(va, vb);
             } else triangulation.insert_constraint(va, vb);
           }
@@ -461,25 +537,28 @@ void PolygonRepair::insertConstraints(Triangulation &triangulation, OGRGeometry*
     }
       
     default:
-      std::cerr << "PolygonRepair::insertConstraints: Cannot understand input." << std::endl;
-      return;
+      std::cerr << "PolygonRepair::insertConstraints: Unsupported geometry type." << std::endl;
+      return true;
       break;
   }
   
-  // Remove partially even-overlapping subconstraints
-  if (!removeOverlappingConstraints) return;
+  // Remove partially even-overlapping subconstraints not detected before (i.e. putting a constraint that covers a previous smaller one)
+  // Note that it is not possible to iterate over the original constraints since they might not exist!
   for (Triangulation::Subconstraint_iterator currentEdge = triangulation.subconstraints_begin();
        currentEdge != triangulation.subconstraints_end();
        ++currentEdge) {
     if (triangulation.number_of_enclosing_constraints(currentEdge->first.first, currentEdge->first.second) % 2 == 0) {
       if (triangulation.is_edge(currentEdge->first.first, currentEdge->first.second, faceOfEdge, indexOfEdge)) {
         if (triangulation.is_constrained(std::pair<Triangulation::Face_handle, int>(faceOfEdge, indexOfEdge))) {
-          //std::cout << "Removing constraint <" << currentEdge->first.first->point() << ", " << currentEdge->first.second->point() << ">" << std::endl;
-          triangulation.remove_constrained_edge(faceOfEdge, indexOfEdge);
+          errorDetected = true;
+          std::cout << "\tOverlapping constraint <" << currentEdge->first.first->point() << ", " << currentEdge->first.second->point() << ">" << std::endl;
+          if (removeOverlappingConstraints) triangulation.remove_constrained_edge(faceOfEdge, indexOfEdge);
         }
       }
     }
   }
+  
+  return errorDetected;
 }
 
 void PolygonRepair::tagOddEven(Triangulation &triangulation) {
@@ -546,7 +625,7 @@ void PolygonRepair::tagPointSet(Triangulation &triangulation, std::list<std::pai
       OGRPolygon *polygon = static_cast<OGRPolygon *>(multipolygon->second->getGeometryRef(currentPolygon));
       taggingStack = std::stack<Triangulation::Face_handle>();
       
-      // Outer
+      // Outer of outer
       if (!multipolygon->first) for (int currentPoint = 0; currentPoint < polygon->getExteriorRing()->getNumPoints(); ++currentPoint) {
         va = triangulation.insert(Point(polygon->getExteriorRing()->getX(currentPoint),
                                         polygon->getExteriorRing()->getY(currentPoint)));
@@ -570,14 +649,16 @@ void PolygonRepair::tagPointSet(Triangulation &triangulation, std::list<std::pai
               std::cerr << "PolygonRepair::tagPointSet: Cannot find edge!" << std::endl;
               return;
             }
-          } if (triangulation.number_of_enclosing_constraints(*currentVertex, *nextVertex) % 2 != 0)
+          } if (triangulation.number_of_enclosing_constraints(*currentVertex, *nextVertex) % 2 != 0) {
             taggingStack.push(faceOfSubedge);
-          currentVertex = nextVertex;
+          } else {
+            std::cerr << "PolygonRepair::tagPointSet: No constraints found at this edge!" << std::endl;
+          } currentVertex = nextVertex;
           ++nextVertex;
         }
       }
       
-      // Inner
+      // Inner of inner
       else for (int currentRing = 0; currentRing < polygon->getNumInteriorRings(); ++currentRing) {
         for (int currentPoint = 0; currentPoint < polygon->getInteriorRing(currentRing)->getNumPoints(); ++currentPoint) {
           va = triangulation.insert(Point(polygon->getInteriorRing(currentRing)->getX(currentPoint),
@@ -602,9 +683,11 @@ void PolygonRepair::tagPointSet(Triangulation &triangulation, std::list<std::pai
                 std::cerr << "PolygonRepair::tagPointSet: Cannot find edge!" << std::endl;
                 return;
               }
-            } if (triangulation.number_of_enclosing_constraints(*currentVertex, *nextVertex) % 2 != 0)
+            } if (triangulation.number_of_enclosing_constraints(*currentVertex, *nextVertex) % 2 != 0) {
               taggingStack.push(faceOfSubedge);
-            currentVertex = nextVertex;
+            } else {
+              std::cerr << "PolygonRepair::tagPointSet: No constraints found at this edge!" << std::endl;
+            } currentVertex = nextVertex;
             ++nextVertex;
           }
         }

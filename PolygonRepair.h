@@ -25,6 +25,7 @@
 
 class PolygonRepair {
 public:
+  bool isValid(OGRGeometry *geometry, bool timeResults = false);
   OGRMultiPolygon *repairOddEven(OGRGeometry *geometry, bool timeResults = false);
   OGRMultiPolygon *repairPointSet(OGRGeometry *geometry, bool timeResults = false);
   void removeSmallPolygons(OGRMultiPolygon *outPolygons, double minArea);
@@ -35,7 +36,7 @@ public:
 private:
   Triangulation triangulation;
   
-  void insertConstraints(Triangulation &triangulation, OGRGeometry *geometry, bool removeOverlappingConstraints = true);
+  bool insertConstraints(Triangulation &triangulation, OGRGeometry *geometry, bool removeOverlappingConstraints = true);
   void tagOddEven(Triangulation &triangulation);
   void tagPointSet(Triangulation &triangulation, std::list<std::pair<bool, OGRMultiPolygon *> > &geometries);
   OGRMultiPolygon *reconstruct(Triangulation &triangulation);
