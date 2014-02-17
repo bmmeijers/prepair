@@ -1,1 +1,28 @@
 Python bindings for prepair
+===========================
+
+To get a working development enviroment:
+
+
+1. Compile prepair as shared object library
+
+cd <projectroot>
+mkdir -p build
+cd build
+cmake .. -DAS_LIBRARY=1
+make -j2
+
+
+2. Compile Python wrapper 
+(you need to have a recent Cython version for this, e.g. version == 0.20)
+
+cd <projectroot>/python
+export LIBRARY_PATH=<projectroot>/build
+cython --cplus prepair.pyx
+python setup.py build_ext --inplace
+
+
+3. Test Python wrapper
+
+export LD_LIBRARY_PATH=<projectroot>/build
+python prepairtest.py
