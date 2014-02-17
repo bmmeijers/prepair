@@ -25,6 +25,11 @@
 
 class PolygonRepair {
 public:
+  // WKB <> WKB
+
+  // WKT <> WKT
+  void repairOddEvenWkt(char **wkt, char **out);
+
   OGRMultiPolygon *repairOddEven(OGRGeometry *geometry, bool timeResults = false);
   OGRMultiPolygon *repairPointSet(OGRGeometry *geometry, bool timeResults = false);
   void removeSmallPolygons(OGRMultiPolygon *outPolygons, double minArea);

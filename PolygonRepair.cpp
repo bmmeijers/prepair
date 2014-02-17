@@ -5,7 +5,7 @@
  Martijn Meijers     b.m.meijers@tudelft.nl
  All rights reserved.
  
- // This file is part of prepair: you can redistribute it and/or modify
+ This file is part of prepair: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
  (at your option) any later version.
@@ -20,6 +20,37 @@
  */
 
 #include "PolygonRepair.h"
+
+
+void PolygonRepair::repairOddEvenWkt(char **wkt, char **out)
+{
+    OGRGeometry *geometry;
+    OGRMultiPolygon *outPolygons;
+
+    OGRGeometryFactory::createFromWkt(wkt, NULL, &geometry);
+    if (geometry == NULL) 
+    {
+        std::cerr << "Failed load" << std::endl;
+        return;
+    } 
+
+    outPolygons = repairOddEven(geometry, false);
+    outPolygons->exportToWkt(out);
+    if (geometry != NULL)
+    {
+        OGRGeometryFactory::destroyGeometry(geometry);
+        geometry = NULL;
+    }
+
+    if (outPolygons != NULL)
+    {
+        OGRGeometryFactory::destroyGeometry(outPolygons);
+        outPolygons = NULL;
+    }
+    triangulation.clear();
+
+    return;
+}
 
 OGRMultiPolygon *PolygonRepair::repairOddEven(OGRGeometry *geometry, bool timeResults) {
   triangulation.clear();
@@ -873,6 +904,15 @@ OGRMultiPolygon *PolygonRepair::reconstruct(Triangulation &triangulation) {
     } for (std::list<OGRLinearRing *>::iterator currentRing = ringsForPolygon.begin(); currentRing != ringsForPolygon.end(); ++currentRing)
       if ((*currentRing)->isClockwise()) newPolygon->addRingDirectly(*currentRing);
     outPolygons->addGeometryDirectly(newPolygon);
+    
+    // Free memory still in use
+    // vertices
+    delete vertices;
+    // rings
+    for (std::list<std::list<Triangulation::Vertex_handle> *>::iterator it = rings.begin(); it != rings.end(); ++it) {
+        delete *it;
+    }
+    rings.clear();
   } return outPolygons;
 }
 
